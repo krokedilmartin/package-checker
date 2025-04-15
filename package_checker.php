@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Krokedil Paketöversikt
  * Plugin URI: https://example.com/krokedil-paketoversikt
- * Description: Visar översikt över installerade Krokedil-paket med förbättrad UX och möjlighet att kopiera informationen.
- * Version: 1.2.2
+ * Description: Visar översikt över installerade Krokedil-paket med förbättrad UX och kopieringsfunktion.
+ * Version: 1.2.3
  * Author: Ditt Namn
  * Author URI: https://example.com
  * License: GPL2
@@ -78,19 +78,22 @@ add_action( 'admin_menu', 'krokedil_packages_admin_menu' );
 
 /**
  * Funktion som renderar admin-sidan med översikt över Krokedil-paket.
+ * Samtidigt byggs också en ren textversion (Markdown) upp, som lagras i ett dolt textarea-fält.
  */
 function krokedil_packages_admin_page() {
+	// Variabel för att bygga upp textversionen (i Markdown-format).
+	$plain_text_output = "Krokedil Paket från Installerade Plugins\n\n";
+
 	?>
 	<div class="wrap">
 		<h1>Krokedil Paketöversikt</h1>
 		<p>Denna sida visar översikt över installerade Krokedil-paket från installerade plugins.</p>
 
-		<!-- Knapp för att kopiera all paketinformation -->
+		<!-- Knapp för att kopiera den formaterade texten -->
 		<button id="copy-packages-btn" style="margin-bottom:20px;">Kopiera paketinformation</button>
-		
-		<!-- Container för all paketinformation -->
+
+		<!-- Container för HTML-utmatningen -->
 		<div id="krokedil-packages-container">
-			
 			<?php
 			// Lista med kända paket och deras GitHub-repositorier (API-endpoint).
 			$repositories = array(
@@ -104,30 +107,39 @@ function krokedil_packages_admin_page() {
 			);
 
 			echo '<h2>Krokedil Paket från Installerade Plugins</h2>';
+			$plain_text_output .= "## Krokedil Paket från Installerade Plugins\n\n";
+
 			if ( ! function_exists( 'get_plugins' ) ) {
 				require_once ABSPATH . 'wp-admin/includes/plugin.php';
 			}
-			$all_plugins = get_plugins();
+			$all_plugins  = get_plugins();
 			$has_packages = false;
-			
+
 			foreach ( $all_plugins as $plugin_file => $plugin_data ) {
 				// Hämta plugin-katalogen
 				$plugin_dir = plugin_dir_path( WP_PLUGIN_DIR . '/' . $plugin_file );
-				// Bygg sökväg till "dependencies/krokedil"-mappen
+				// Bygg sökvägen till "dependencies/krokedil"-mappen
 				$krokedil_dependencies = trailingslashit( $plugin_dir ) . 'dependencies/krokedil';
 				if ( is_dir( $krokedil_dependencies ) ) {
+					// Skriv ut pluginets namn i HTML och lägg till i textversionen
 					echo '<h3>' . esc_html( $plugin_data['Name'] ) . '</h3>';
+					$plain_text_output .= '### ' . $plugin_data['Name'] . "\n\n";
+
 					$packages = scandir( $krokedil_dependencies );
 					if ( $packages === false ) {
 						echo '<p style="color: red;">Kunde inte läsa dependencies-katalogen för ' . esc_html( $plugin_data['Name'] ) . '.</p>';
 						continue;
 					}
-					// Starta tabellen för detta plugin
+					// Starta tabellen i HTML
 					echo '<div class="krokedil-packages-table">';
 					echo '<table class="wp-list-table widefat fixed striped">';
 					echo '<thead><tr><th>Paket</th><th>Installerad version</th><th>Senaste version</th><th>Status</th></tr></thead>';
 					echo '<tbody>';
-					
+
+					// Lägg till rubriker för Markdown-tabell
+					$plain_text_output .= "| Paket | Installerad version | Senaste version | Status |\n";
+					$plain_text_output .= "|-------|---------------------|-----------------|--------|\n";
+
 					foreach ( $packages as $package ) {
 						if ( $package === '.' || $package === '..' ) {
 							continue;
@@ -142,30 +154,39 @@ function krokedil_packages_admin_page() {
 						if ( isset( $repositories[ $package ] ) ) {
 							$latest_version = get_latest_package_version( $repositories[ $package ] );
 						}
-						$status = ( $installed_version === $latest_version ) ? 'Up-to-date' : 'Outdated';
+						$status       = ( $installed_version === $latest_version ) ? 'Up-to-date' : 'Outdated';
 						$status_class = ( $status === 'Up-to-date' ) ? 'status-up-to-date' : 'status-outdated';
-						
+
+						// Gör paketnamnet klickbart om repository finns, och konvertera API-URL:en till en vanlig GitHub-URL
 						echo '<tr>';
-							// Gör paketnamnet klickbart om repository finns, och konvertera API-URL till vanlig GitHub-URL
 							echo '<td>';
-							if ( isset( $repositories[ $package ] ) ) {
-								$repo_api_url = $repositories[ $package ];
-								$repo_url = str_replace( array( 'https://api.github.com/repos/', '/releases/latest' ), array( 'https://github.com/', '' ), $repo_api_url );
-								echo '<a href="' . esc_url( $repo_url ) . '" target="_blank">' . esc_html( $package ) . '</a>';
-							} else {
-								echo esc_html( $package );
-							}
+						if ( isset( $repositories[ $package ] ) ) {
+							$repo_api_url = $repositories[ $package ];
+							$repo_url     = str_replace(
+								array( 'https://api.github.com/repos/', '/releases/latest' ),
+								array( 'https://github.com/', '' ),
+								$repo_api_url
+							);
+							echo '<a href="' . esc_url( $repo_url ) . '" target="_blank">' . esc_html( $package ) . '</a>';
+						} else {
+							echo esc_html( $package );
+						}
 							echo '</td>';
-							
 							echo '<td>' . esc_html( $installed_version ) . '</td>';
 							echo '<td>' . esc_html( $latest_version ) . '</td>';
 							echo '<td class="' . esc_attr( $status_class ) . '">' . esc_html( $status ) . '</td>';
 						echo '</tr>';
+
+						// Lägg till raden i Markdown-tabellen
+						$plain_text_output .= '| ' . $package . ' | ' . $installed_version . ' | ' . $latest_version . ' | ' . $status . " |\n";
 					}
-					
+
 					echo '</tbody>';
 					echo '</table>';
 					echo '</div>';
+
+					// Extra radbrytning mellan plugins
+					$plain_text_output .= "\n";
 				}
 			}
 			if ( ! $has_packages ) {
@@ -173,29 +194,52 @@ function krokedil_packages_admin_page() {
 			}
 			?>
 		</div>
-		
-		<!-- Enkel JavaScript-funktion för att kopiera paketinformationen -->
+
+		<!-- Dold textarea med den formaterade textversionen (Markdown-format) -->
+		<textarea id="krokedil-packages-plaintext" style="width:100%; height:200px; display:none;"><?php echo esc_textarea( $plain_text_output ); ?></textarea>
+
+		<!-- Enkel inline CSS för att formatera HTML-tabellerna -->
+		<style>
+			.krokedil-packages-table {
+				margin-top: 20px;
+			}
+			.krokedil-packages-table table {
+				width: 100%;
+				border-collapse: collapse;
+			}
+			.krokedil-packages-table th,
+			.krokedil-packages-table td {
+				padding: 8px;
+				border: 1px solid #ddd;
+				text-align: left;
+			}
+			.krokedil-packages-table th {
+				background-color: #f7f7f7;
+			}
+			.status-up-to-date {
+				color: green;
+				font-weight: bold;
+			}
+			.status-outdated {
+				color: red;
+				font-weight: bold;
+			}
+		</style>
+
+		<!-- JavaScript för kopieringsfunktionen – kopierar innehållet från den dolda textarea:n -->
 		<script>
 			document.getElementById("copy-packages-btn").addEventListener("click", function() {
-				var container = document.getElementById("krokedil-packages-container");
-				if (document.body.createTextRange) { // För äldre IE
-					var range = document.body.createTextRange();
-					range.moveToElementText(container);
-					range.select();
+				var textArea = document.getElementById("krokedil-packages-plaintext");
+				// Gör textarea:n synlig temporärt för att möjliggöra kopiering
+				textArea.style.display = "block";
+				textArea.select();
+				try {
 					document.execCommand("copy");
-				} else if (window.getSelection) {
-					var range = document.createRange();
-					range.selectNode(container);
-					window.getSelection().removeAllRanges();
-					window.getSelection().addRange(range);
-					try {
-						document.execCommand("copy");
-						alert("Paketinformation kopierad!");
-					} catch(err) {
-						alert("Kunde inte kopiera informationen!");
-					}
-					window.getSelection().removeAllRanges();
+					alert("Paketinformation kopierad!");
+				} catch (err) {
+					alert("Kunde inte kopiera informationen!");
 				}
+				textArea.style.display = "none";
 			});
 		</script>
 	</div>
