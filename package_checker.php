@@ -104,6 +104,7 @@ function krokedil_packages_admin_page() {
 				'woocommerce'             => 'https://api.github.com/repos/krokedil/woocommerce/releases/latest',
 				'sign-in-with-klarna'     => 'https://api.github.com/repos/krokedil/sign-in-with-klarna/releases/latest',
 				'shipping'                => 'https://api.github.com/repos/krokedil/shipping/releases/latest',
+				'shop-widgets' 			  => 'https://api.github.com/repos/krokedil/shop-widgets/releases/latest',
 			);
 
 			echo '<h2>Krokedil Paket från Installerade Plugins</h2>';
